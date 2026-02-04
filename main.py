@@ -9,9 +9,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ================= 配置区 =================
 # 密码和邮箱从 GitHub 环境变量读取，安全！
-SENDER_EMAIL = os.environ["1431457301@qq.com"]
-SENDER_PASSWORD = os.environ["zkwtbaiumhvdiajb"]
-RECEIVER_EMAIL = os.environ["12085660@qq.com"]
+SENDER_EMAIL = os.environ["MY_EMAIL"]
+SENDER_PASSWORD = os.environ["MY_PASSWORD"]
+RECEIVER_EMAIL = os.environ["MY_RECEIVER"]
 CITY = "Yiwu"
 
 
@@ -107,4 +107,5 @@ def send_email(city, weather, temp, humidity, warning_msg):
 
 
 if __name__ == '__main__':
+
     run_task()
