@@ -1,13 +1,11 @@
-name: Daily Love Weather
+name: Daily Weather Bot
 
 on:
   schedule:
-    # ⚠️ 重要：GitHub 用的是 UTC 时间 (比北京时间慢8小时)
-    # 如果你想 北京时间 13:00 发送
-    # 计算：13:00 - 8小时 = 05:00 UTC
+    # 北京时间 07:00 = UTC 23:00 (前一天)
     - cron: '0 23 * * *'
   
-  # 允许你手动点击按钮测试
+  # 允许手动测试
   workflow_dispatch:
 
 jobs:
@@ -22,13 +20,13 @@ jobs:
       with:
         python-version: '3.9'
 
+    # 【这里改了！】不再读取 requirements.txt，直接强制安装
     - name: Install dependencies
       run: |
-        pip install -r requirements.txt
+        pip install requests yagmail
 
-    - name: Run script
+    - name: Run bot
       env:
-        # 把保险箱里的密码注入到程序里
         MY_EMAIL: ${{ secrets.MY_EMAIL }}
         MY_PASSWORD: ${{ secrets.MY_PASSWORD }}
         MY_RECEIVER: ${{ secrets.MY_RECEIVER }}
