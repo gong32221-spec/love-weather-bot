@@ -1,0 +1,35 @@
+name: Daily Love Weather
+
+on:
+  schedule:
+    # ⚠️ 重要：GitHub 用的是 UTC 时间 (比北京时间慢8小时)
+    # 如果你想 北京时间 13:00 发送
+    # 计算：13:00 - 8小时 = 05:00 UTC
+    - cron: '0 23 * * *'
+  
+  # 允许你手动点击按钮测试
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run script
+      env:
+        # 把保险箱里的密码注入到程序里
+        MY_EMAIL: ${{ secrets.MY_EMAIL }}
+        MY_PASSWORD: ${{ secrets.MY_PASSWORD }}
+        MY_RECEIVER: ${{ secrets.MY_RECEIVER }}
+      run: python main.py
