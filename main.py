@@ -1,6 +1,6 @@
 import requests
 import yagmail
-import os  # 读取云端密码
+import os
 import time
 import urllib3
 
@@ -8,96 +8,109 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ================= 配置区 =================
-# 密码和邮箱从 GitHub 环境变量读取，安全！
 SENDER_EMAIL = os.environ["MY_EMAIL"]
 SENDER_PASSWORD = os.environ["MY_PASSWORD"]
 RECEIVER_EMAIL = os.environ["MY_RECEIVER"]
 CITY = "Yiwu"
-
-
 # ==========================================
 
 def get_weather_data():
-    """ 死磕模式：获取天气数据，失败会自动重试 """
+    """ 获取天气数据，带重试 """
     url = f"http://wttr.in/{CITY}?format=j1"
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    for i in range(1, 6):  # 最多试 5 次
+    for i in range(1, 6):
         try:
             print(f">>> 正在尝试第 {i} 次连接...")
-            # verify=False 解决 SSL 报错，timeout=10 防止卡死
             response = requests.get(url, headers=headers, timeout=10, verify=False)
-
             if response.status_code == 200:
                 return response.json()
             elif response.status_code == 502:
-                print("⚠️ 服务器忙 (502)，休息 3 秒...")
                 time.sleep(3)
-            else:
-                print(f"⚠️ 状态码异常: {response.status_code}")
-
         except Exception as e:
             print(f"⚠️ 连接出错: {e}")
             time.sleep(3)
-
     return None
-
 
 def run_task():
     print(f">>> 🚀 云端机器人启动！坐标：{CITY}")
-
     data = get_weather_data()
 
     if data:
-        # 解析数据
+        # 1. 获取【实时】温度（作为参考）
         current = data['current_condition'][0]
         temp = current['temp_C']
         humidity = current['humidity']
 
-        # 智能获取天气描述 (优先中文)
-        if 'lang_zh' in current:
-            weather = current['lang_zh'][0]['value']
-        else:
-            weather = current['weatherDesc'][0]['value']
+        # 2. 获取【今天全天】的预报
+        # weather[0] 代表今天，weather[1] 代表明天
+        today_forecast = data['weather'][0]
+        hourly_data = today_forecast['hourly']
+        
+        # 定义坏天气关键词 (中英文都要，防止翻译失效)
+        bad_weather_keywords = [
+            '雨', '雪', '雷', '冰雹',  # 中文
+            'Rain', 'Snow', 'Thunder', 'Drizzle', 'Showers' # 英文
+        ]
+
+        # 3. 核心升级：遍历今天每 3 小时的预报
+        will_rain = False
+        rain_desc = "" # 记录具体是什么雨
+
+        # 检查当天的每个时间段
+        for hour in hourly_data:
+            # 尝试获取中文，没有就用英文
+            if 'lang_zh' in hour:
+                desc = hour['lang_zh'][0]['value']
+            else:
+                desc = hour['weatherDesc'][0]['value']
+            
+            # 打印出来调试看一看
+            # print(f"时间段预报: {desc}") 
+
+            # 只要有一个时间段包含坏天气，就标记为 True
+            if any(keyword in desc for keyword in bad_weather_keywords):
+                will_rain = True
+                rain_desc = desc # 记录下来，比如 "小雨"
+                break # 只要找到一次有雨，就不用往后找了，肯定要带伞
 
         # ============================================
-        # ☔ 核心逻辑修改：只有坏天气才发邮件
+        # ☔ 发送逻辑
         # ============================================
-        bad_weather_keywords = ['雨', '雪', '雷', '冰雹']
-
-        # 检查天气描述里有没有上面那些字
-        if any(keyword in weather for keyword in bad_weather_keywords):
-            print(f"☔ 检测到坏天气 ({weather})，正在发送警报...")
-
-            # 定义一句贴心的警报语
-            warning_msg = "⚠️ <b>外面正在下雨/雪，出门千万别忘带伞！</b>"
-
-            send_email(CITY, weather, temp, humidity, warning_msg)
+        if will_rain:
+            print(f"☔ 查到了！今天预报中有：{rain_desc}，正在发送警报...")
+            warning_msg = f"⚠️ <b>注意：今天预报有【{rain_desc}】，出门务必带伞！</b>"
+            # 这里的 weather 参数传 rain_desc，让邮件标题直接显示“小雨”而不是实时的“阴”
+            send_email(CITY, rain_desc, temp, humidity, warning_msg)
         else:
-            # 如果是晴天/阴天，直接结束，不发邮件
-            print(f"🌞 今天天气不错 ({weather})，不打扰主人，任务结束。")
+            # 如果跑遍了全天都没雨，才是真的没雨
+            # 获取当前的实时天气描述用于日志
+            if 'lang_zh' in current:
+                current_desc = current['lang_zh'][0]['value']
+            else:
+                current_desc = current['weatherDesc'][0]['value']
+            print(f"🌞 检查了全天预报，没有发现雨雪。实时天气：{current_desc}。")
 
     else:
-        print("❌ 5次尝试全失败，今日跳过。")
-
+        print("❌ 获取数据失败。")
 
 def send_email(city, weather, temp, humidity, warning_msg):
     try:
         yag = yagmail.SMTP(user=SENDER_EMAIL, password=SENDER_PASSWORD, host='smtp.qq.com')
-
-        # 标题改成【早安】，并加上【带伞】标记
-        subject = f"【带伞提醒】早安！{city}正在{weather}，记得带伞"
+        
+        # 标题高能预警
+        subject = f"【带伞提醒】早安！{city}今天有{weather}，别忘带伞"
 
         contents = [
-            f"<h2 style='color: red;'>{warning_msg}</h2>",  # 警报语放大标红
+            f"<h2 style='color: red;'>{warning_msg}</h2>",
             "<hr>",
             "<h3 style='color: pink;'>宝宝爱你(≧∇≦)/</h3>",
             f"<p>城市: {city}</p>",
-            f"<p>天气: {weather}</p>",
-            f"<p>温度: {temp}°C</p>",
-            f"<p>湿度: {humidity}%</p>",
+            f"<p>今天天气: {weather}</p>",
+            f"<p>实时温度: {temp}°C</p>",
+            f"<p>实时湿度: {humidity}%</p>",
             "<br>",
-            "<p style='color: gray; font-size: 12px;'>-- 你的专属气象员</p>"
+            "<p style='color: gray; font-size: 12px;'>-- 你的全天候气象雷达</p>"
         ]
 
         yag.send(to=RECEIVER_EMAIL, subject=subject, contents=contents)
@@ -105,7 +118,5 @@ def send_email(city, weather, temp, humidity, warning_msg):
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-
 if __name__ == '__main__':
-
     run_task()
